@@ -47,7 +47,7 @@ int prte_finalize(void)
 {
     int rc;
     uint32_t key;
-    prte_job_t *jdata = NULL, *child_jdata = NULL;
+    prte_job_t *jdata = NULL, *child_jdata = NULL, *next_jdata = NULL;
     void *elt = NULL;
 
     --prte_initialized;
@@ -75,27 +75,23 @@ int prte_finalize(void)
     /* release the cache */
     PRTE_RELEASE(prte_cache);
 
-    prte_display_prte_job_data("Finalize");
-
     /* Release the job hash table
      *
-     * First we need to iterate through an release all of the children.
-     * Since we cannot know the order in which items are removed from the hash
-     * table, then if we do not do this then we may try to free a child job
-     * before the parent which would trigger an assert in the list item
-     * destructor which checks to make sure this item was removed from the list
-     * before being destructed.
-     *
-     * Second (and not with the first loop) we can then destruct the
-     * jobs in the hash table knowing that they are definitely not on a
-     * children list.
+     * There is the potential for a prte_job_t object to still be in the
+     * children list of another prte_job_t object, both objects stored in the
+     * prte_job_data hash table. If this happens then an assert will be raised
+     * when the first prte_job_t object is released when iterating over the
+     * prte_job_data structure. Therefore, we traverse the children list of
+     * every prte_job_t in the prte_job_data hash, removing all children
+     * references before iterating over the prte_job_data hash table to
+     * release the prte_job_t objects.
      */
     PRTE_HASH_TABLE_FOREACH(key, uint32, jdata, prte_job_data) {
         if (NULL != jdata) {
             // Remove all children from the list
             // We do not want to destruct this list here since that occurs in the
             // prte_job_t destructor - which will happen in the next loop.
-            PRTE_LIST_FOREACH(child_jdata, &jdata->children, prte_job_t) {
+            PRTE_LIST_FOREACH_SAFE(child_jdata, next_jdata, &jdata->children, prte_job_t) {
                 prte_list_remove_item(&jdata->children, &child_jdata->super);
             }
         }

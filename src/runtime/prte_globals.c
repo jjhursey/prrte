@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2017      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2017-2020 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -378,6 +378,52 @@ int prte_dt_init(void)
     return PRTE_SUCCESS;
 }
 
+void prte_display_prte_job_data(const char * msg)
+{
+    int rc;
+    uint32_t key;
+    prte_job_t *child_jdata=NULL, *jptr = NULL;
+    void *nptr;
+    int i = 0;
+
+    /* if the job data wasn't setup, we cannot provide the data */
+    if (NULL == prte_job_data) {
+        prte_output(0, "================================= %s (Not Initialized)", msg);
+        return;
+    }
+
+    prte_output(0, "================================= %s (BEGIN)", msg);
+
+    rc = prte_hash_table_get_first_key_uint32(prte_job_data, &key, (void **)&jptr, &nptr);
+    while (PRTE_SUCCESS == rc) {
+        if (NULL == jptr) {
+            continue;
+        }
+
+        prte_output(0, "%s (%d) %s at %s: Num. Children %d",
+                    PRTE_NAME_PRINT(PRTE_PROC_MY_NAME),
+                    i,
+                    PRTE_JOBID_PRINT(jptr->jobid),
+                    jptr->nspace,
+                    (int) prte_list_get_size(&jptr->children));
+
+        PRTE_LIST_FOREACH(child_jdata, &jptr->children, prte_job_t) {
+            prte_output(0, "%s (%d) %s at %s: Child ----> %s at %s",
+                        PRTE_NAME_PRINT(PRTE_PROC_MY_NAME),
+                        i,
+                        PRTE_JOBID_PRINT(jptr->jobid),
+                        jptr->nspace,
+                        PRTE_JOBID_PRINT(child_jdata->jobid),
+                        child_jdata->nspace);
+        }
+
+        rc = prte_hash_table_get_next_key_uint32(prte_job_data, &key, (void **)&jptr, nptr, &nptr);
+        ++i;
+    }
+    prte_output(0, "================================= %s (END)", msg);
+}
+
+
 prte_job_t* prte_get_job_data_object(prte_jobid_t job)
 {
     prte_job_t *jdata;
@@ -390,6 +436,20 @@ prte_job_t* prte_get_job_data_object(prte_jobid_t job)
     jdata = NULL;
     prte_hash_table_get_value_uint32(prte_job_data, job, (void**)&jdata);
     return jdata;
+}
+
+prte_job_t* prte_set_job_data_object(prte_jobid_t jobid, prte_job_t *jdata)
+{
+    prte_job_t *old_jdata = NULL;
+
+    /* if the job data wasn't setup, we cannot set the data */
+    if (NULL == prte_job_data) {
+        return NULL;
+    }
+
+    old_jdata = prte_get_job_data_object(jobid);
+    prte_hash_table_set_value_uint32(prte_job_data, jobid, jdata);
+    return old_jdata;
 }
 
 prte_proc_t* prte_get_proc_object(prte_process_name_t *proc)
@@ -648,6 +708,7 @@ static void prte_job_destruct(prte_job_t* job)
     prte_app_context_t *app;
     int n;
     prte_timer_t *evtimer;
+    prte_job_t *child_jdata = NULL;
 
     if (NULL == job) {
         /* probably just a race condition - just return */
@@ -655,8 +716,8 @@ static void prte_job_destruct(prte_job_t* job)
     }
 
     if (prte_debug_flag) {
-        prte_output(0, "%s Releasing job data for %s",
-                    PRTE_NAME_PRINT(PRTE_PROC_MY_NAME), PRTE_JOBID_PRINT(job->jobid));
+        prte_output(0, "%s Releasing job data for %s (%d)",
+                    PRTE_NAME_PRINT(PRTE_PROC_MY_NAME), PRTE_JOBID_PRINT(job->jobid), (int)job->jobid);
     }
 
     if (NULL != job->personality) {
@@ -703,6 +764,11 @@ static void prte_job_destruct(prte_job_t* job)
     PRTE_LIST_DESTRUCT(&job->attributes);
 
     PRTE_DESTRUCT(&job->launch_msg);
+
+    /* Clear the child list before destroying the list */
+    PRTE_LIST_FOREACH(child_jdata, &job->children, prte_job_t) {
+        prte_list_remove_item(&job->children, &child_jdata->super);
+    }
 
     PRTE_LIST_DESTRUCT(&job->children);
 

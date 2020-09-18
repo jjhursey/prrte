@@ -88,6 +88,13 @@
  *
  */
 
+/*
+ * This hash table implementation does not chain duplicate entries, but
+ * instead replaces what was there before. Set this variable to "1" to
+ * show a warning message when this happens.
+ * Such a warning is helpful in detecting when objects might be
+ * orphaned as a result of this replacement.
+ */
 #define HASH_SHOW_REPLACEMENT_WARNING 0
 
 #define HASH_MULTIPLIER 31
