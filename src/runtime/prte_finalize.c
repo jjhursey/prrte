@@ -15,6 +15,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2020      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -46,7 +47,7 @@ int prte_finalize(void)
 {
     int rc;
     uint32_t key;
-    prte_job_t *jdata;
+    prte_job_t *jdata = NULL, *child_jdata = NULL;
     void *elt = NULL;
 
     --prte_initialized;
@@ -74,7 +75,33 @@ int prte_finalize(void)
     /* release the cache */
     PRTE_RELEASE(prte_cache);
 
-    /* release the job hash table; pop the first element in key order and release it, repeat */
+    prte_display_prte_job_data("Finalize");
+
+    /* Release the job hash table
+     *
+     * First we need to iterate through an release all of the children.
+     * Since we cannot know the order in which items are removed from the hash
+     * table, then if we do not do this then we may try to free a child job
+     * before the parent which would trigger an assert in the list item
+     * destructor which checks to make sure this item was removed from the list
+     * before being destructed.
+     *
+     * Second (and not with the first loop) we can then destruct the
+     * jobs in the hash table knowing that they are definitely not on a
+     * children list.
+     */
+    PRTE_HASH_TABLE_FOREACH(key, uint32, jdata, prte_job_data) {
+        if (NULL != jdata) {
+            // Remove all children from the list
+            // We do not want to destruct this list here since that occurs in the
+            // prte_job_t destructor - which will happen in the next loop.
+            PRTE_LIST_FOREACH(child_jdata, &jdata->children, prte_job_t) {
+                prte_list_remove_item(&jdata->children, &child_jdata->super);
+            }
+        }
+    }
+
+    jdata = NULL;
     do {
         rc = prte_hash_table_get_next_key_uint32(prte_job_data, &key, (void**)&jdata, NULL, &elt);
         if (PRTE_SUCCESS == rc) {
