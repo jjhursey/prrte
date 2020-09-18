@@ -17,6 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
+ * Copyright (c) 2020      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -86,6 +87,8 @@
  * implementation just needs to be a little careful.
  *
  */
+
+#define HASH_SHOW_REPLACEMENT_WARNING 0
 
 #define HASH_MULTIPLIER 31
 
@@ -405,6 +408,11 @@ prte_hash_table_set_value_uint32(prte_hash_table_t * ht, uint32_t key, void * va
             }
             return PRTE_SUCCESS;
         } else if (elt->key.u32 == key) {
+#if PRTE_ENABLE_DEBUG && HASH_SHOW_REPLACEMENT_WARNING == 1
+            prte_output(0, "prte_hash_table_set_value_uint32: "
+                        "Warning: replacing existing value for key %u",
+                        key);
+#endif
             /* replace existing element */
             elt->value = value;
             return PRTE_SUCCESS;
@@ -539,6 +547,12 @@ prte_hash_table_set_value_uint64(prte_hash_table_t * ht, uint64_t key, void * va
             }
             return PRTE_SUCCESS;
         } else if (elt->key.u64 == key) {
+#if PRTE_ENABLE_DEBUG && HASH_SHOW_REPLACEMENT_WARNING == 1
+            prte_output(0, "prte_hash_table_set_value_uint64: "
+                        "Warning: replacing existing value for key %lu",
+                        key);
+#endif
+            /* replace existing element */
             elt->value = value;
             return PRTE_SUCCESS;
         } else {
@@ -708,6 +722,11 @@ prte_hash_table_set_value_ptr(prte_hash_table_t * ht,
             return PRTE_SUCCESS;
         } else if (elt->key.ptr.key_size == key_size &&
                    0 == memcmp(elt->key.ptr.key, key, key_size)) {
+#if PRTE_ENABLE_DEBUG && HASH_SHOW_REPLACEMENT_WARNING == 1
+            prte_output(0, "prte_hash_table_set_value_ptr: "
+                        "Warning: replacing existing value for key %p",
+                        key);
+#endif
             /* replace existing value */
             elt->value = value;
             return PRTE_SUCCESS;
